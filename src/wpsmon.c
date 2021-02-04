@@ -327,21 +327,24 @@ void monitor(char *bssid, int passive, int source, int channel, int mode)
 		}
 		else
 		{
-        		act.sa_handler = sigalrm_handler;
-        		sigaction (SIGALRM, &act, 0);
-			ualarm(CHANNEL_INTERVAL, CHANNEL_INTERVAL);
-			int startchan = 1;
-			if(get_wifi_band() == AN_BAND)
-				startchan = 34;
-			change_channel(startchan);
+        		act.sa_flags = SA_SIGINFO;
+        	act.sa_sigaction = channel_timer_handler;
+        	sigemptyset(&act.sa_mask);
+        	sigaction(SIGUSR1, &act, NULL);
+        		
+        	// Define sigevent
+        	sev.sigev_notify = SIGEV_SIGNAL;
+        	sev.sigev_signo = SIGUSR1;
+        		
+        	// Create the timer
+        	timer_create(CLOCK_REALTIME, &sev, &timerid);
+        	its.it_value.tv_sec = 1;
+        	its.it_value.tv_nsec = 0;
+        	its.it_interval.tv_sec = its.it_value.tv_sec;
+        	its.it_interval.tv_nsec = its.it_value.tv_nsec;
+        	timer_settime(timerid, 0, &its, NULL);
+		change_channel(1);
 		}
-
-		memset(&act, 0, sizeof(struct sigaction));
-		sigaction (SIGINT, 0, &act);
-		act.sa_flags &= ~SA_RESTART;
-		act.sa_handler = sigint_handler;
-		sigaction (SIGINT, &act, 0);
-
 	}
 
 	if(!header_printed)
@@ -358,7 +361,7 @@ void monitor(char *bssid, int passive, int source, int channel, int mode)
 		header_printed = 1;
 	}
 
-	while(!got_sigint && (packet = next_packet(&header))) {
+	while((packet = next_packet(&header))) {
 		parse_wps_settings(packet, &header, bssid, passive, mode, source);
 		memset((void *) packet, 0, header.len);
 	}
